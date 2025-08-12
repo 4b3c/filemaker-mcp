@@ -11,11 +11,17 @@ def _connect() -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
-def init_db() -> None:
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True) if os.path.dirname(DB_PATH) else None
+def init_db(reset: bool = False, db_path: str = DB_PATH) -> None:
+    os.makedirs(os.path.dirname(db_path), exist_ok=True) if os.path.dirname(db_path) else None
+
     with _connect() as conn:
-        conn.executescript(
-            """
+        if reset:
+            conn.executescript("""
+                DROP TABLE IF EXISTS edges;
+                DROP TABLE IF EXISTS nodes;
+            """)
+
+        conn.executescript("""
             CREATE TABLE IF NOT EXISTS nodes (
                 id      INTEGER PRIMARY KEY AUTOINCREMENT,
                 name    TEXT NOT NULL,
@@ -35,8 +41,7 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
             CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_id);
             CREATE INDEX IF NOT EXISTS idx_edges_to   ON edges(to_id);
-            """
-        )
+        """)
 
 # --- Node CRUD ---
 
@@ -125,13 +130,3 @@ def parents_of(child_id: int) -> List[sqlite3.Row]:
     )
     with _connect() as conn:
         return conn.execute(sql, (child_id,)).fetchall()
-
-# --- Utility ---
-
-def reset_all() -> None:
-    with _connect() as conn:
-        conn.executescript("""
-            DROP TABLE IF EXISTS edges;
-            DROP TABLE IF EXISTS nodes;
-        """)
-        init_db()

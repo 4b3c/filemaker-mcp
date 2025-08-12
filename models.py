@@ -4,16 +4,16 @@ import json
 import database
 
 class NodeType(str, Enum):
-    UNKNOWN    = "Unknown"
-    ACCOUNT    = "Account"
-    BASE_TABLE = "BaseTable"
-    FIELDS     = "Fields"
+    UNKNOWN      = "Unknown"
+    ACCOUNT      = "Account"
+    BASE_TABLE   = "BaseTable"
+    FIELD        = "Field"
 
 class EdgeType(str, Enum):
-    UNKNOWN  = "Unknown"
-    PARENT   = "Parent"
-    IS       = "Is"
-    CONTAINS = "Contains"
+    UNKNOWN      = "Unknown"
+    PARENT       = "Parent"
+    IS           = "Is"
+    CONTAINS     = "Contains"
 
 class Node:
     def __init__(self, name: str, type: NodeType = NodeType.UNKNOWN,
@@ -30,20 +30,12 @@ class Node:
             database.node_update(self.id, self.name, self.type.value, self.details)
         return self.id
 
-    def saveSelf(self) -> int:
-        return self.save()
-
-    def add_child(self, child: "Node", rel_type: EdgeType = EdgeType.UNKNOWN,
-            ) -> int:
+    def add_child(self, child: "Node", rel_type: EdgeType = EdgeType.UNKNOWN) -> int:
         if self.id is None:
             self.save()
         if child.id is None:
             child.save()
         return database.edge_insert(rel_type.value, self.id, child.id)
-
-    def addChild(self, child: "Node", relationshipType: EdgeType = EdgeType.UNKNOWN,
-            ) -> int:
-        return self.add_child(child, relationshipType)
 
     def get_children(self) -> List[Tuple["Node", EdgeType, int]]:
         rows = database.children_of(self.id)
@@ -58,9 +50,6 @@ class Node:
             r["edge_id"],
         ) for r in rows]
 
-    def getChildren(self) -> List[Tuple["Node", EdgeType, int]]:
-        return self.get_children()
-
     def get_parents(self) -> List[Tuple["Node", EdgeType, int]]:
         rows = database.parents_of(self.id)
         return [(
@@ -73,9 +62,6 @@ class Node:
             EdgeType(r["edge_type"]),
             r["edge_id"],
         ) for r in rows]
-
-    def getParents(self) -> List[Tuple["Node", EdgeType, int]]:
-        return self.get_parents()
 
     @classmethod
     def load(cls, node_id: int) -> Optional["Node"]:
