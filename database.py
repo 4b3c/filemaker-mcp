@@ -5,15 +5,15 @@ import os
 
 DB_PATH = "data/graph.db"
 
-def _connect(db_path: str = DB_PATH) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
+def _connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
-def init_db(db_path: str = DB_PATH) -> None:
-    os.makedirs(os.path.dirname(db_path), exist_ok=True) if os.path.dirname(db_path) else None
-    with _connect(db_path) as conn:
+def init_db() -> None:
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True) if os.path.dirname(DB_PATH) else None
+    with _connect() as conn:
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS nodes (
@@ -40,98 +40,98 @@ def init_db(db_path: str = DB_PATH) -> None:
 
 # --- Node CRUD ---
 
-def node_insert(name: str, type_value: str, details: Dict[str, Any], db_path: str = DB_PATH) -> int:
-    with _connect(db_path) as conn:
+def node_insert(name: str, type_value: str, details: Dict[str, Any]) -> int:
+    with _connect() as conn:
         cur = conn.execute(
             "INSERT INTO nodes (name, type, details) VALUES (?, ?, ?)",
             (name, type_value, json.dumps(details)),
         )
         return cur.lastrowid
 
-def node_update(node_id: int, name: str, type_value: str, details: Dict[str, Any], db_path: str = DB_PATH) -> bool:
-    with _connect(db_path) as conn:
+def node_update(node_id: int, name: str, type_value: str, details: Dict[str, Any]) -> bool:
+    with _connect() as conn:
         cur = conn.execute(
             "UPDATE nodes SET name = ?, type = ?, details = ? WHERE id = ?",
             (name, type_value, json.dumps(details), node_id),
         )
         return cur.rowcount > 0
 
-def node_get_by_id(node_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    with _connect(db_path) as conn:
+def node_get_by_id(node_id: int) -> Optional[sqlite3.Row]:
+    with _connect() as conn:
         return conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
 
-def node_find(where: Optional[str] = None, params: Tuple[Any, ...] = (), db_path: str = DB_PATH) -> List[sqlite3.Row]:
+def node_find(where: Optional[str] = None, params: Tuple[Any, ...] = ()) -> List[sqlite3.Row]:
     sql = "SELECT * FROM nodes"
     if where:
         sql += f" WHERE {where}"
-    with _connect(db_path) as conn:
+    with _connect() as conn:
         return conn.execute(sql, params).fetchall()
 
-def node_delete(node_id: int, db_path: str = DB_PATH) -> bool:
-    with _connect(db_path) as conn:
+def node_delete(node_id: int) -> bool:
+    with _connect() as conn:
         cur = conn.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
         return cur.rowcount > 0
 
 # --- Edge CRUD ---
 
-def edge_insert(type_value: str, from_id: int, to_id: int, db_path: str = DB_PATH) -> int:
-    with _connect(db_path) as conn:
+def edge_insert(type_value: str, from_id: int, to_id: int) -> int:
+    with _connect() as conn:
         cur = conn.execute(
             "INSERT INTO edges (type, from_id, to_id) VALUES (?, ?, ?)",
             (type_value, from_id, to_id),
         )
         return cur.lastrowid
 
-def edge_update(edge_id: int, type_value: str, from_id: int, to_id: int, db_path: str = DB_PATH) -> bool:
-    with _connect(db_path) as conn:
+def edge_update(edge_id: int, type_value: str, from_id: int, to_id: int) -> bool:
+    with _connect() as conn:
         cur = conn.execute(
             "UPDATE edges SET type = ?, from_id = ?, to_id = ? WHERE id = ?",
             (type_value, from_id, to_id, edge_id),
         )
         return cur.rowcount > 0
 
-def edge_get_by_id(edge_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    with _connect(db_path) as conn:
+def edge_get_by_id(edge_id: int) -> Optional[sqlite3.Row]:
+    with _connect() as conn:
         return conn.execute("SELECT * FROM edges WHERE id = ?", (edge_id,)).fetchone()
 
-def edge_find(where: Optional[str] = None, params: Tuple[Any, ...] = (), db_path: str = DB_PATH) -> List[sqlite3.Row]:
+def edge_find(where: Optional[str] = None, params: Tuple[Any, ...] = ()) -> List[sqlite3.Row]:
     sql = "SELECT * FROM edges"
     if where:
         sql += f" WHERE {where}"
-    with _connect(db_path) as conn:
+    with _connect() as conn:
         return conn.execute(sql, params).fetchall()
 
-def edge_delete(edge_id: int, db_path: str = DB_PATH) -> bool:
-    with _connect(db_path) as conn:
+def edge_delete(edge_id: int) -> bool:
+    with _connect() as conn:
         cur = conn.execute("DELETE FROM edges WHERE id = ?", (edge_id,))
         return cur.rowcount > 0
 
 # --- Neighbor queries ---
 
-def children_of(parent_id: int, db_path: str = DB_PATH) -> List[sqlite3.Row]:
+def children_of(parent_id: int) -> List[sqlite3.Row]:
     sql = (
         "SELECT n.*, e.type AS edge_type, e.id AS edge_id "
         "FROM edges e JOIN nodes n ON n.id = e.to_id "
         "WHERE e.from_id = ? ORDER BY n.id"
     )
-    with _connect(db_path) as conn:
+    with _connect() as conn:
         return conn.execute(sql, (parent_id,)).fetchall()
 
-def parents_of(child_id: int, db_path: str = DB_PATH) -> List[sqlite3.Row]:
+def parents_of(child_id: int) -> List[sqlite3.Row]:
     sql = (
         "SELECT n.*, e.type AS edge_type, e.id AS edge_id "
         "FROM edges e JOIN nodes n ON n.id = e.from_id "
         "WHERE e.to_id = ? ORDER BY n.id"
     )
-    with _connect(db_path) as conn:
+    with _connect() as conn:
         return conn.execute(sql, (child_id,)).fetchall()
 
 # --- Utility ---
 
-def reset_all(db_path: str = DB_PATH) -> None:
-    with _connect(db_path) as conn:
+def reset_all() -> None:
+    with _connect() as conn:
         conn.executescript("""
             DROP TABLE IF EXISTS edges;
             DROP TABLE IF EXISTS nodes;
         """)
-        init_db(db_path)
+        init_db()

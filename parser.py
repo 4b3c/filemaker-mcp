@@ -5,7 +5,6 @@ import xmltodict
 import json
 
 import database as db
-import consts
 
 
 tree = ET.parse("data/Example.xml")
