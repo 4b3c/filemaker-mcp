@@ -8,6 +8,8 @@ class NodeType(str, Enum):
     ACCOUNT      = "Account"
     BASE_TABLE   = "BaseTable"
     FIELD        = "Field"
+    REL_TABLE    = "RelTable"
+    RELATIONSHIP = "Relationship"
 
 class EdgeType(str, Enum):
     UNKNOWN      = "Unknown"
