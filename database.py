@@ -1,117 +1,137 @@
-from enum import Enum
-from typing import Optional
-from sqlmodel import Relationship, SQLModel, Field, create_engine, Session, select
-from sqlalchemy import Column, Enum as SAEnum, UniqueConstraint, JSON
-from sqlalchemy.orm import joinedload
+import sqlite3
+from typing import Any, Dict, List, Optional, Tuple
+import json
+import os
 
-class ObjectType(str, Enum):
-    UNKNOWN = "Unknown"
-    ACCOUNT = "Account"
-    BASE_TABLE = "BaseTable"
-    FIELDS  = "Fields"
+DB_PATH = "data/graph.db"
 
+def _connect(db_path: str = DB_PATH) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
+    return conn
 
-class Node(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    type: ObjectType = Field(
-        default=ObjectType.UNKNOWN,
-        sa_column=Column(SAEnum(ObjectType, native_enum=False), nullable=False)
+def init_db(db_path: str = DB_PATH) -> None:
+    os.makedirs(os.path.dirname(db_path), exist_ok=True) if os.path.dirname(db_path) else None
+    with _connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS nodes (
+                id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                name    TEXT NOT NULL,
+                type    TEXT NOT NULL,
+                details TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS edges (
+                id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                type     TEXT NOT NULL,
+                from_id  INTEGER NOT NULL,
+                to_id    INTEGER NOT NULL,
+                FOREIGN KEY(from_id) REFERENCES nodes(id) ON DELETE CASCADE,
+                FOREIGN KEY(to_id)   REFERENCES nodes(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
+            CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_id);
+            CREATE INDEX IF NOT EXISTS idx_edges_to   ON edges(to_id);
+            """
+        )
+
+# --- Node CRUD ---
+
+def node_insert(name: str, type_value: str, details: Dict[str, Any], db_path: str = DB_PATH) -> int:
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            "INSERT INTO nodes (name, type, details) VALUES (?, ?, ?)",
+            (name, type_value, json.dumps(details)),
+        )
+        return cur.lastrowid
+
+def node_update(node_id: int, name: str, type_value: str, details: Dict[str, Any], db_path: str = DB_PATH) -> bool:
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            "UPDATE nodes SET name = ?, type = ?, details = ? WHERE id = ?",
+            (name, type_value, json.dumps(details), node_id),
+        )
+        return cur.rowcount > 0
+
+def node_get_by_id(node_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    with _connect(db_path) as conn:
+        return conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
+
+def node_find(where: Optional[str] = None, params: Tuple[Any, ...] = (), db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    sql = "SELECT * FROM nodes"
+    if where:
+        sql += f" WHERE {where}"
+    with _connect(db_path) as conn:
+        return conn.execute(sql, params).fetchall()
+
+def node_delete(node_id: int, db_path: str = DB_PATH) -> bool:
+    with _connect(db_path) as conn:
+        cur = conn.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
+        return cur.rowcount > 0
+
+# --- Edge CRUD ---
+
+def edge_insert(type_value: str, from_id: int, to_id: int, db_path: str = DB_PATH) -> int:
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            "INSERT INTO edges (type, from_id, to_id) VALUES (?, ?, ?)",
+            (type_value, from_id, to_id),
+        )
+        return cur.lastrowid
+
+def edge_update(edge_id: int, type_value: str, from_id: int, to_id: int, db_path: str = DB_PATH) -> bool:
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            "UPDATE edges SET type = ?, from_id = ?, to_id = ? WHERE id = ?",
+            (type_value, from_id, to_id, edge_id),
+        )
+        return cur.rowcount > 0
+
+def edge_get_by_id(edge_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    with _connect(db_path) as conn:
+        return conn.execute("SELECT * FROM edges WHERE id = ?", (edge_id,)).fetchone()
+
+def edge_find(where: Optional[str] = None, params: Tuple[Any, ...] = (), db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    sql = "SELECT * FROM edges"
+    if where:
+        sql += f" WHERE {where}"
+    with _connect(db_path) as conn:
+        return conn.execute(sql, params).fetchall()
+
+def edge_delete(edge_id: int, db_path: str = DB_PATH) -> bool:
+    with _connect(db_path) as conn:
+        cur = conn.execute("DELETE FROM edges WHERE id = ?", (edge_id,))
+        return cur.rowcount > 0
+
+# --- Neighbor queries ---
+
+def children_of(parent_id: int, db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    sql = (
+        "SELECT n.*, e.type AS edge_type, e.id AS edge_id "
+        "FROM edges e JOIN nodes n ON n.id = e.to_id "
+        "WHERE e.from_id = ? ORDER BY n.id"
     )
-    name: str
-    details: dict = Field(sa_column=Column(JSON, nullable=False))
+    with _connect(db_path) as conn:
+        return conn.execute(sql, (parent_id,)).fetchall()
 
-    edges_out: list["Edge"] = Relationship(
-        back_populates="from_node",
-        sa_relationship_kwargs={"foreign_keys": "[Edge.from_node_id]"}
+def parents_of(child_id: int, db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    sql = (
+        "SELECT n.*, e.type AS edge_type, e.id AS edge_id "
+        "FROM edges e JOIN nodes n ON n.id = e.from_id "
+        "WHERE e.to_id = ? ORDER BY n.id"
     )
-    edges_in: list["Edge"] = Relationship(
-        back_populates="to_node",
-        sa_relationship_kwargs={"foreign_keys": "[Edge.to_node_id]"}
-    )
+    with _connect(db_path) as conn:
+        return conn.execute(sql, (child_id,)).fetchall()
 
+# --- Utility ---
 
-class Edge(SQLModel, table=True):
-    __table_args__ = (UniqueConstraint("from_node_id", "to_node_id"),)
-    id: int | None = Field(default=None, primary_key=True)
-    from_node_id: int = Field(foreign_key="node.id")
-    to_node_id: int = Field(foreign_key="node.id")
-    relationship: str = Field(default="related")
-
-    from_node: Optional[Node] = Relationship(
-        back_populates="edges_out",
-        sa_relationship_kwargs={"foreign_keys": "[Edge.from_node_id]"}
-    )
-    to_node: Optional[Node] = Relationship(
-        back_populates="edges_in",
-        sa_relationship_kwargs={"foreign_keys": "[Edge.to_node_id]"}
-    )
-
-
-engine = create_engine("sqlite:///graph.db")
-SQLModel.metadata.create_all(engine)
-
-# ---------- generic CRUD ops ----------
-def create(obj_cls, data: dict):
-    with Session(engine) as s:
-        obj = obj_cls(**data)
-        s.add(obj)
-        s.commit()
-        s.refresh(obj)
-        return obj
-
-def read(obj_cls, obj_id: int):
-    with Session(engine) as s:
-        return s.get(obj_cls, obj_id)
-
-def update(obj_cls, obj_id: int, data: dict):
-    with Session(engine) as s:
-        obj = s.get(obj_cls, obj_id)
-        for k, v in data.items():
-            setattr(obj, k, v)
-        s.commit()
-        s.refresh(obj)
-        return obj
-
-def delete(obj_cls, obj_id: int):
-    with Session(engine) as s:
-        obj = s.get(obj_cls, obj_id)
-        if obj:
-            s.delete(obj)
-            s.commit()
-        return bool(obj)
-
-# ---------- helpers ----------
-def get_related_nodes(node_id: int):
-    with Session(engine) as session:
-        # Load outgoing edges with to_node preloaded
-        edges = session.exec(
-            select(Edge)
-            .where(Edge.from_node_id == node_id)
-            .options(joinedload(Edge.to_node))
-        ).all()
-
-        # Format output
-        return [
-            {
-                "to": edge.to_node.name if edge.to_node else None,
-                "type": edge.to_node.type if edge.to_node else None,
-                "relationship": edge.relationship
-            }
-            for edge in edges
-        ]
-
-
-
-
-
-
-
-node_json1 = {"type": "ACCOUNT", "name": "Main", "details": {"owner": "John"}}
-node_json2 = {"type": "ACCOUNT", "name": "Alt", "details": {"owner": "John"}}
-n1 = create(Node, node_json1)
-n2 = create(Node, node_json2)
-edge_json1 = {"from_node_id": n1.id, "to_node_id": n2.id, "relationship": "same user"}
-e1 = create(Edge, edge_json1)
-
-related = get_related_nodes(n1.id)
-print(related)
+def reset_all(db_path: str = DB_PATH) -> None:
+    with _connect(db_path) as conn:
+        conn.executescript("""
+            DROP TABLE IF EXISTS edges;
+            DROP TABLE IF EXISTS nodes;
+        """)
+        init_db(db_path)

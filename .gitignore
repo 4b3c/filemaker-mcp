@@ -10,5 +10,9 @@ wheels/
 .venv
 
 # Data
+data/
 *.db
 *.xml
+
+# mac *barf*
+.DS_Store
