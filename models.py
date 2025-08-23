@@ -4,32 +4,37 @@ import json
 import database
 
 class NodeType(str, Enum):
-    UNKNOWN      = "Unknown"
-    ACCOUNT      = "Account"
-    BASE_TABLE   = "BaseTable"
-    FIELD        = "Field"
-    REL_TABLE    = "RelTable"
-    RELATIONSHIP = "Relationship"
+    UNKNOWN         = "Unknown"
+    ACCOUNT         = "Account"
+    BASE_TABLE      = "BaseTable"
+    FIELD           = "Field"
+    REL_TABLE       = "RelTable"
+    RELATIONSHIP    = "Relationship"
+    LAYOUT          = "Layout"
+    LAYOUT_OBJECT   = "LayoutObject"
 
 class EdgeType(str, Enum):
-    UNKNOWN      = "Unknown"
-    PARENT       = "Parent"
-    IS           = "Is"
-    CONTAINS     = "Contains"
+    UNKNOWN         = "Unknown"
+    PARENT          = "Parent"
+    IS              = "Is"
+    CONTAINS        = "Contains"
+    USED_BY         = "UsedBy"
 
 class Node:
     def __init__(self, name: str, type: NodeType = NodeType.UNKNOWN,
-                 details: Optional[Dict[str, Any]] = None, id: Optional[int] = None):
+                 details: Optional[Dict[str, Any]] = None, id: Optional[int] = None,
+                 filemaker_id: Optional[str] = None):
         self.id = id
         self.name = name
         self.type = type
+        self.filemaker_id = filemaker_id
         self.details = details or {}
 
     def save(self) -> int:
         if self.id is None:
-            self.id = database.node_insert(self.name, self.type.value, self.details)
+            self.id = database.node_insert(self.name, self.type.value, self.details, self.filemaker_id)
         else:
-            database.node_update(self.id, self.name, self.type.value, self.details)
+            database.node_update(self.id, self.name, self.type.value, self.details, self.filemaker_id)
         return self.id
 
     def add_child(self, child: "Node", rel_type: EdgeType = EdgeType.UNKNOWN) -> int:
@@ -46,6 +51,7 @@ class Node:
                 id=r["id"],
                 name=r["name"],
                 type=NodeType(r["type"]),
+                filemaker_id=r["filemaker_id"],
                 details=json.loads(r["details"]) if r["details"] else {},
             ),
             EdgeType(r["edge_type"]),
@@ -59,6 +65,7 @@ class Node:
                 id=r["id"],
                 name=r["name"],
                 type=NodeType(r["type"]),
+                filemaker_id=r["filemaker_id"],
                 details=json.loads(r["details"]) if r["details"] else {},
             ),
             EdgeType(r["edge_type"]),
@@ -74,6 +81,20 @@ class Node:
             id=row["id"],
             name=row["name"],
             type=NodeType(row["type"]),
+            filemaker_id=row["filemaker_id"],
+            details=json.loads(row["details"]) if row["details"] else {},
+        )
+
+    @classmethod
+    def load_by_filemaker_id(cls, filemaker_id: str) -> Optional["Node"]:
+        row = database.node_get_by_filemaker_id(filemaker_id)
+        if not row:
+            return None
+        return cls(
+            id=row["id"],
+            name=row["name"],
+            type=NodeType(row["type"]),
+            filemaker_id=row["filemaker_id"],
             details=json.loads(row["details"]) if row["details"] else {},
         )
 
@@ -86,6 +107,7 @@ class Node:
                 id=r["id"],
                 name=r["name"],
                 type=NodeType(r["type"]),
+                filemaker_id=r["filemaker_id"],
                 details=json.loads(r["details"]) if r["details"] else {},
             )
             for r in rows

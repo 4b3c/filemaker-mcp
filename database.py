@@ -23,10 +23,11 @@ def init_db(reset: bool = False, db_path: str = DB_PATH) -> None:
 
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS nodes (
-                id      INTEGER PRIMARY KEY AUTOINCREMENT,
-                name    TEXT NOT NULL,
-                type    TEXT NOT NULL,
-                details TEXT NOT NULL DEFAULT '{}'
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                name         TEXT NOT NULL,
+                type         TEXT NOT NULL,
+                filemaker_id TEXT,
+                details      TEXT NOT NULL DEFAULT '{}'
             );
 
             CREATE TABLE IF NOT EXISTS edges (
@@ -39,31 +40,36 @@ def init_db(reset: bool = False, db_path: str = DB_PATH) -> None:
             );
 
             CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
+            CREATE INDEX IF NOT EXISTS idx_nodes_filemaker_id ON nodes(filemaker_id);
             CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_id);
             CREATE INDEX IF NOT EXISTS idx_edges_to   ON edges(to_id);
         """)
 
 # --- Node CRUD ---
 
-def node_insert(name: str, type_value: str, details: Dict[str, Any]) -> int:
+def node_insert(name: str, type_value: str, details: Dict[str, Any], filemaker_id: Optional[str] = None) -> int:
     with _connect() as conn:
         cur = conn.execute(
-            "INSERT INTO nodes (name, type, details) VALUES (?, ?, ?)",
-            (name, type_value, json.dumps(details)),
+            "INSERT INTO nodes (name, type, filemaker_id, details) VALUES (?, ?, ?, ?)",
+            (name, type_value, filemaker_id, json.dumps(details)),
         )
         return cur.lastrowid
 
-def node_update(node_id: int, name: str, type_value: str, details: Dict[str, Any]) -> bool:
+def node_update(node_id: int, name: str, type_value: str, details: Dict[str, Any], filemaker_id: Optional[str] = None) -> bool:
     with _connect() as conn:
         cur = conn.execute(
-            "UPDATE nodes SET name = ?, type = ?, details = ? WHERE id = ?",
-            (name, type_value, json.dumps(details), node_id),
+            "UPDATE nodes SET name = ?, type = ?, filemaker_id = ?, details = ? WHERE id = ?",
+            (name, type_value, filemaker_id, json.dumps(details), node_id),
         )
         return cur.rowcount > 0
 
 def node_get_by_id(node_id: int) -> Optional[sqlite3.Row]:
     with _connect() as conn:
         return conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
+
+def node_get_by_filemaker_id(filemaker_id: str) -> Optional[sqlite3.Row]:
+    with _connect() as conn:
+        return conn.execute("SELECT * FROM nodes WHERE filemaker_id = ?", (filemaker_id,)).fetchone()
 
 def node_find(where: Optional[str] = None, params: Tuple[Any, ...] = ()) -> List[sqlite3.Row]:
     sql = "SELECT * FROM nodes"
