@@ -154,6 +154,7 @@ def parse_LayoutObjects(object_list, layout_node: Node):
     for obj in object_list:
         # Create a node for the object with FileMaker ID
         output(obj)
+        exit()
         obj_filemaker_id = obj.get("@id")
         obj_node = Node(obj["@name"], NodeType.LAYOUT_OBJECT, obj, filemaker_id=obj_filemaker_id)
         obj_node.save()

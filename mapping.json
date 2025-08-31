@@ -1,0 +1,14 @@
+{
+    "BaseTableCatalog": {
+        "IterateOver": ["BaseTable"]
+    },
+    "BaseDirectoryCatalog": {
+        "IterateOver": []
+    },
+    "RelationshipGraph": {
+        "IterateOver": ["RelationshipList.Relationship", "TableList.Table"]
+    },
+    "LayoutCatalog": {
+        "IterateOver": ["Layout"]
+    }
+}
